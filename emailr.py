@@ -25,7 +25,7 @@ Usage:
         3. Path to save the output Hashcat rules.
 
 Example:
-    $ python3 emailr.py.py
+    $ python3 emailr.py
     Enter path to input file containing emails: emails.txt
     Enter comma-separated domains to filter (e.g., gmail.com,yahoo.com): gmail.com,yahoo.com
     Enter path to save generated hashcat rules: rules.txt
