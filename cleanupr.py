@@ -3,13 +3,13 @@
 import subprocess
 import os
 
-def run_and_rename_cleanup(input_file="file1", temp_output_file="file2", command_binary="./cleanup-rules.bin", command_arg="2"):
+def run_and_rename_cleanup(input_file, temp_output_file="file2", command_binary="./cleanup-rules.bin", command_arg="2"):
     """
     Runs an external command, adds a rule to the start of the output file,
     counts the lines, and renames the file.
 
     Args:
-        input_file (str): The name of the input file (passed via '<').
+        input_file (str): The name of the input file (passed via '<'). **(No default value)**
         temp_output_file (str): The name of the temporary output file (passed via '>').
         command_binary (str): The path to the command's binary file.
         command_arg (str): The command argument.
@@ -21,7 +21,6 @@ def run_and_rename_cleanup(input_file="file1", temp_output_file="file2", command
     RULE_TO_ADD = ":\n"
     
     # 1. Command construction and execution
-    # ... (command execution code remains the same) ...
     print(f"Running command: {command_binary} {command_arg} with input from {input_file} and output to {temp_output_file}...")
 
     try:
@@ -82,12 +81,12 @@ def run_and_rename_cleanup(input_file="file1", temp_output_file="file2", command
         print(f"Found {line_count} lines.")
 
     except FileNotFoundError:
-        # This should already be handled by the rule addition section
         print(f"ERROR: File {temp_output_file} not found.")
         return False
 
     # 3. Rename the file
-    new_filename = f"concentrator_markov_{line_count}.rule"
+    # Filename format: concentrator_<command_arg>_<line_count>.rule
+    new_filename = f"concentrator_{command_arg}_{line_count}.rule"
 
     try:
         os.rename(temp_output_file, new_filename)
@@ -99,28 +98,29 @@ def run_and_rename_cleanup(input_file="file1", temp_output_file="file2", command
 
 
 if __name__ == "__main__":
-    # The following lines are for testing. Ensure that:
-    # 1. The ./cleanup-rules.bin file exists and is executable.
-    # 2. The input file 'file1' exists.
+    
+    # --- Get input file path from user ---
+    # Using 'file1' as a suggested default if no input is provided
+    input_path = input("Enter the path to the input file (e.g., file1): ").strip() or "file1"
 
-    # Creating a dummy input file for testing
-    # (If 'file1' already exists, you can comment this block out)
-    if not os.path.exists("file1"):
+    # Creating a dummy input file for testing if the user accepts the default 'file1' 
+    # and it doesn't already exist.
+    if input_path == "file1" and not os.path.exists(input_path):
         print("Creating dummy file 'file1' for testing.")
         with open("file1", "w") as f:
-            # Three lines; the external command would need to be simulated (e.g., `cat`)
-            # In a test environment, we assume the command creates an output file 'file2' 
-            # with content different from 'file1'.
+            # Create three lines of content
             f.write("test\nline\ninput\n")
+    # ------------------------------------
 
     # Run the main function
-    success = run_and_rename_cleanup()
+    success = run_and_rename_cleanup(input_path)
 
-    # Cleanup (removing temporary or test files, if desired)
-    # We leave the resulting file `concentrator_markov_*.rule`
-    if success and os.path.exists("file1") and input("Delete the test file 'file1'? (y/n): ").lower() == 'y':
-          os.remove("file1")
-          print("Deleted 'file1'.")
+    # Cleanup logic remains, but now references 'input_path'
+    
+    # We leave the resulting file `concentrator_2_*.rule`
+    if success and os.path.exists(input_path) and input(f"Delete the test file '{input_path}'? (y/n): ").lower() == 'y':
+          os.remove(input_path)
+          print(f"Deleted '{input_path}'.")
     # In case of an error, check if the temporary file 'file2' is not the final file
     # and delete it only if the operation failed (renaming didn't occur)
     elif not success and os.path.exists("file2"): 
