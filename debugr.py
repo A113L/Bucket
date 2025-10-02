@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-
+'''
+The script is to use to process debugged hashcat rules in mode = 1
+'''
 import sys
 import os
 from collections import Counter
