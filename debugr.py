@@ -16,7 +16,9 @@ def sort_and_count_occurrences(input_filepath: str):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' does not exist.")
         return
+    print("\n" + "="*50)
     print(f"Processing file: {input_filepath}")
+    print("="*50)
 
     # 1. Reading the data
     try:
@@ -43,7 +45,8 @@ def sort_and_count_occurrences(input_filepath: str):
     print(f"\nThe file contains {unique_count} unique entries.")
 
     while True:
-        limit_input = input(f"Enter the maximum number of unique entries to save (1 to {unique_count}, 0 or Enter = save all): ").strip()
+        # Prompt changed to clarify which file is being processed
+        limit_input = input(f"[{os.path.basename(input_filepath)}] Enter the maximum number of unique entries to save (1 to {unique_count}, 0 or Enter = save all): ").strip()
 
         if not limit_input or limit_input == '0':
             limit = unique_count
@@ -90,8 +93,18 @@ def sort_and_count_occurrences(input_filepath: str):
         print(f"File write error: {e}")
 
 if __name__ == "__main__":
+    # sys.argv[0] is the script name itself, so we check if there are at least 2 arguments
     if len(sys.argv) < 2:
-        print("Usage: python3 debugr.py <input_file_path>")
+        print("Usage: python3 debugr.py <input_file_path_1> [input_file_path_2 ...]")
+        # Exit with a non-zero status code to indicate an error
+        sys.exit(1)
     else:
-        input_file = sys.argv[1]
-        sort_and_count_occurrences(input_file)
+        # sys.argv[1:] contains all command-line arguments EXCEPT the script name
+        input_files = sys.argv[1:]
+        print(f"Found {len(input_files)} file(s) to process.")
+        
+        # Iterate over all provided file paths
+        for input_file in input_files:
+            sort_and_count_occurrences(input_file)
+        
+        print("\nAll files processed.")
