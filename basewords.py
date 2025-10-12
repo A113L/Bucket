@@ -21,7 +21,7 @@ def clean_and_filter_word(word):
     Returns the cleaned word or None if it fails any filter.
     """
     # Step 1: Remove non-alphabetic characters (removes digits, symbols, etc.)
-    # Example: 'slowo123!' -> 'slowo'
+    # Example: 'word123!' -> 'word'
     clean_word = re.sub(r'[^a-zA-Z]', '', word)
     
     # Convert to lowercase
