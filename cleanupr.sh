@@ -4,7 +4,7 @@
 # This script parses a log file (from a tool like hashcat) to extract line numbers 
 # of invalid rules and then deletes those lines from the rule file.
 # hashcat -a 0 -m 0 hash.txt wordlist.txt -r rules/invalid.rule | tee -a log.txt
-
+# log errors to txt file and quit
 
 # The log file containing the invalid rule line numbers
 LOG_FILE="./log.txt"
