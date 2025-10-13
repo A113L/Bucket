@@ -9,8 +9,16 @@
 # The log file containing the invalid rule line numbers
 LOG_FILE="./log.txt"
 
-# EDIT THIS PATH if your file is different (e.g., rules/invalid.rule)
-INPUT_FILE="./rules/invalid.rule" 
+# --- Interactive Input for Rule File Path ---
+echo "--- Rule File Cleaner ---"
+# Prompts the user to input the path to the rule file (e.g., rules/invalid.rule)
+read -p "Please enter the path to the rule file you want to clean: " INPUT_FILE
+
+# Check if the input file path is empty
+if [ -z "$INPUT_FILE" ]; then
+    echo "Error: Rule file path cannot be empty. Exiting."
+    exit 1
+fi
 
 # Temporary file used during the cleaning process
 OUTPUT_FILE="${INPUT_FILE}.temp"
@@ -47,7 +55,8 @@ echo "Found ${DELETE_COUNT} unique line numbers to delete. Starting removal from
 # 1. Check if the input file exists
 if [ ! -f "${INPUT_FILE}" ]; then
     echo "Error: Input rule file ${INPUT_FILE} not found. Exiting."
-    echo "Please ensure the path is correct or adjust the INPUT_FILE variable in the script."
+    # The original line referring to changing the script variable is now outdated, but kept for context.
+    echo "Please ensure the path is correct."
     exit 1
 fi
 
