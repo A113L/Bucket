@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+This script analyzes cracked passwords to extract and count common Hashcat masks, 
+including length-limited edge masks (?x?x...WORD) and full password masks (?u?l?l?d?s...).
+"""
+
 import string
 import os
 import argparse 
