@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 
 import sys
+import time
+import random
 from mega import Mega
 from mega.errors import RequestError
 
 # Define the User-Agent string for a modern Windows Chrome browser
-# (User-Agent strings are subject to change over time)
+# (Always keep this updated with a current browser's User-Agent)
 WINDOWS_CHROME_USER_AGENT = (
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/129.0.0.0 Safari/537.36'
 )
 
+# --- NEW: Define a range for random delay between account checks (in seconds) ---
+MIN_DELAY = 5
+MAX_DELAY = 15
+# ---------------------------------------------------------------------------------
 
 # Function to format bytes into a readable format (MB, GB, TB)
 def format_bytes(bytes_size):
@@ -36,7 +42,7 @@ def check_mega_usage(accounts_file="accounts.txt"):
     """
     Reads accounts from a file, logs in, and displays storage usage.
     """
-    print("--- ☁️ MEGA.nz Account Usage Checker ☁️ ---")
+    print("--- ☁️ MEGA.nz Account Usage Checker (Enhanced OpSec) ☁️ ---")
     
     # 1. Load accounts
     try:
@@ -56,7 +62,15 @@ def check_mega_usage(accounts_file="accounts.txt"):
     print("-" * 50)
     
     # 2. Process accounts
-    for line in account_lines:
+    for i, line in enumerate(account_lines):
+        # --- NEW: Add a random delay before processing the next account (Skip delay before first account) ---
+        if i > 0:
+            # The 'max(1, ...)' ensures a minimum delay of at least 1 second
+            delay_time = max(1, random.uniform(MIN_DELAY, MAX_DELAY))
+            print(f"😴 Pausing for {delay_time:.2f} seconds to simulate human interval...")
+            time.sleep(delay_time)
+        # ----------------------------------------------------------------------------------------------------
+
         try:
             email, password = line.split(':', 1)
         except ValueError:
@@ -65,12 +79,13 @@ def check_mega_usage(accounts_file="accounts.txt"):
             
         print(f"[{email}] Logging in...")
         
-        # --- MODIFICATION HERE: Pass the User-Agent ---
-        # The Mega constructor accepts a dictionary of options, including 'User-Agent'
+        # Pass the User-Agent to the Mega constructor options
         mega_options = {'User-Agent': WINDOWS_CHROME_USER_AGENT}
-        mega = Mega(options=mega_options)
-        # ---------------------------------------------
         
+        # Instantiate the Mega client with options
+        # NOTE: The 'Mega' constructor typically uses a requests.Session internally,
+        # which helps in connection reuse and is a key part of "simulation."
+        mega = Mega(options=mega_options)
         m = None # Mega client object
 
         try:
@@ -90,27 +105,24 @@ def check_mega_usage(accounts_file="accounts.txt"):
             free_fmt = format_bytes(free)
 
             # Calculate percentage usage
-            if total > 0:
-                percentage = (used / total) * 100
-            else:
-                percentage = 0
+            percentage = (used / total) * 100 if total > 0 else 0
 
             print(f"  ✅ Successfully logged in.")
             print(f"  ➡️ Used: **{used_fmt}** / {total_fmt} ({percentage:.2f}%)")
             print(f"  ➡️ Free: {free_fmt}")
-        
+            
         except RequestError as e:
-            # Handle API errors (e.g., invalid password, network error)
+            # Handle API errors
             error_message = str(e).strip()
             if "EACCESS" in error_message or "Invalid email or password" in error_message:
                 print(f"  ❌ LOGIN ERROR: Invalid email/password or access denied.")
             else:
                 print(f"  ❌ API ERROR: {error_message}")
-        
+            
         except Exception as e:
             # General handling for other errors
             print(f"  ❌ Unexpected error: {e}")
-        
+            
         finally:
             # Ensure a separating line after each operation
             print("-" * 50)
