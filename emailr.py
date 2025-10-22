@@ -85,7 +85,8 @@ def print_top_domains(file_path, limit):
     domain_counts = Counter()
     
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # FIX: Added errors='ignore' to handle non-UTF-8 characters gracefully
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -150,13 +151,13 @@ def main():
         sys.exit(0)
         
     counter = Counter()
-    # examples list remains for potential use, but is not printed in the final summary.
     examples = defaultdict(list) 
 
     print("\nProcessing file...")
     
     try:
-        with open(input_path, 'r', encoding='utf-8') as f:
+        # FIX: Added errors='ignore' to handle non-UTF-8 characters gracefully
+        with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 line = line.strip()
                 if not line:
