@@ -61,7 +61,7 @@ def check_mega_usage(accounts_file="accounts.txt"):
             print(f"Format error for line: {line}. Expected 'email:password'. Skipping.")
             continue
             
-        print(f"[{email}] Logowanie...")
+        print(f"[{email}] Logging in...")
         
         # --- MODIFICATION HERE: Pass the User-Agent ---
         # The Mega constructor accepts a dictionary of options, including 'User-Agent'
