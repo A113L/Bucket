@@ -23,18 +23,18 @@ except AttributeError:
 MAX_WORD_LEN = 32
 MAX_OUTPUT_LEN = MAX_WORD_LEN * 2
 MAX_RULE_ARGS = 2
-MAX_RULES_IN_BATCH = 128  
-LOCAL_WORK_SIZE = 256     
+MAX_RULES_IN_BATCH = 128    
+LOCAL_WORK_SIZE = 256        
 
 # BATCH SIZE FOR WORDS: Processed per OpenCL kernel launch.
-WORDS_PER_GPU_BATCH = 500000 
+WORDS_PER_GPU_BATCH = 500000
 
 # Global Uniqueness Map Parameters (Hash Bitfield)
 # 35 bits -> ~4 GB VRAM usage for the map
 GLOBAL_HASH_MAP_BITS = 35
 GLOBAL_HASH_MAP_WORDS = 1 << (GLOBAL_HASH_MAP_BITS - 5)
-GLOBAL_HASH_MAP_BYTES = GLOBAL_HASH_MAP_WORDS * np.uint64(4) 
-GLOBAL_HASH_MAP_MASK = (1 << (GLOBAL_HASH_MAP_BITS - 5)) - 1 
+GLOBAL_HASH_MAP_BYTES = GLOBAL_HASH_MAP_WORDS * np.uint32(4)  
+GLOBAL_HASH_MAP_MASK = (1 << (GLOBAL_HASH_MAP_BITS - 5)) - 1  
 
 # Rule IDs 
 START_ID_SIMPLE = 0
@@ -59,12 +59,32 @@ unsigned int fnv1a_hash_32(const unsigned char* data, unsigned int len) {{
     return hash;
 }}
 
+__kernel void hash_map_init_kernel(
+    __global unsigned int* global_hash_map,
+    __global const unsigned int* base_hashes,
+    const unsigned int num_hashes,
+    const unsigned int map_mask)
+{{
+    unsigned int global_id = get_global_id(0);
+    if (global_id >= num_hashes) return;
+
+    unsigned int word_hash = base_hashes[global_id];
+    
+    // Hash map bitfield logic
+    unsigned int map_index = (word_hash >> 5) & map_mask; 
+    unsigned int bit_index = word_hash & 31; 
+    unsigned int set_bit = (1U << bit_index); 
+    
+    // Atomically set the bit in the global hash map
+    atomic_or(&global_hash_map[map_index], set_bit);
+}}
+
 
 __kernel void bfs_kernel(
     __global const unsigned char* base_words_in,
     __global const unsigned int* rules_in,         
     __global unsigned int* rule_uniqueness_counts, 
-    __global unsigned int* global_hash_map,      
+    __global unsigned int* global_hash_map,        
     const unsigned int num_words,
     const unsigned int num_rules_in_batch,
     const unsigned int max_word_len,
@@ -284,20 +304,20 @@ __kernel void bfs_kernel(
 
         
         if (operator_char == 'T') {{ // 'T' (toggle case at pos)
-             out_len = word_len;
-             for (unsigned int i = 0; i < word_len; i++) {{
-                 result_temp[i] = current_word_ptr[i];
-             }}
-             if (pos_to_change < word_len) {{
-                 unsigned char c = current_word_ptr[pos_to_change];
-                 if (c >= 'a' && c <= 'z') {{
-                     result_temp[pos_to_change] = c - 32;
-                     changed_flag = true;
-                 }} else if (c >= 'A' && c <= 'Z') {{
-                     result_temp[pos_to_change] = c + 32;
-                     changed_flag = true;
-                 }}
-             }}
+              out_len = word_len;
+              for (unsigned int i = 0; i < word_len; i++) {{
+                  result_temp[i] = current_word_ptr[i];
+              }}
+              if (pos_to_change < word_len) {{
+                  unsigned char c = current_word_ptr[pos_to_change];
+                  if (c >= 'a' && c <= 'z') {{
+                      result_temp[pos_to_change] = c - 32;
+                      changed_flag = true;
+                  }} else if (c >= 'A' && c <= 'Z') {{
+                      result_temp[pos_to_change] = c + 32;
+                      changed_flag = true;
+                  }}
+              }}
         }} else if (operator_char == 'D') {{ // 'D' (delete char at pos)
             unsigned int out_idx = 0;
             if (pos_to_change < word_len) {{
@@ -387,14 +407,14 @@ __kernel void bfs_kernel(
         unsigned int bit_index = word_hash & 31; 
         unsigned int check_bit = (1U << bit_index); 
         
-        // Explicit cast to avoid 'address space mismatch' error
         __global unsigned int* map_ptr = (__global unsigned int*)&global_hash_map[map_index];
 
-        // Atomically set the bit and check the old value
-        unsigned int old_word = atomic_or(map_ptr, check_bit);
+        // Read the value (atomic_and with no change is a safe read for atomics)
+        unsigned int current_word = atomic_and(map_ptr, 0xFFFFFFFFU); 
         
-        // If the bit was NOT set before (i.e., this is a unique word)
-        if (!(old_word & check_bit)) {{
+        // If the bit IS NOT set (i.e., the generated word was NOT in the base wordlist)
+        if (!(current_word & check_bit)) {{
+            // Increment the score for this rule.
             atomic_inc(&rule_uniqueness_counts[rule_batch_idx]);
         }}
 
@@ -470,19 +490,22 @@ def save_ranked_rules(ranking_list, output_path):
     """
     print(f"\nSaving ranked rules to: {output_path}...")
     
+    # 1. Filtrowanie: tylko reguły z pozytywnym wynikiem
     ranked_rules = [rule for rule in ranking_list if rule.get('score', 0) > 0]
 
     if not ranked_rules:
         print("❌ No rules were ranked (score > 0). File not created.")
         return
 
+    # 2. Sortowanie: malejąco po wyniku
     ranked_rules.sort(key=lambda rule: rule['score'], reverse=True)
-                              
+                        
     try:
         with open(output_path, 'w', newline='\n', encoding='utf-8') as f:
             for rule in ranked_rules:
+                # Zapisuje samą regułę, bez score
                 f.write(f"{rule['rule_data']}\n")
-        print(f"✅ Save completed successfully. File contains {len(ranked_rules)} rules sorted by uniqueness score.")
+        print(f"✅ Save completed successfully. File contains {len(ranked_rules)} rules sorted by success score.")
     except Exception as e:
         print(f"❌ Error while saving to file: {e}")
 
@@ -510,20 +533,19 @@ def wordlist_iterator(wordlist_path, max_len, batch_size):
                 
                 if current_batch_count == batch_size:
                     # Yield a copy of the filled part of the array to prevent issues 
-                    # if the numpy array is modified before the next yield is consumed.
-                    yield base_words_np.ravel().copy(), current_batch_count, base_hashes
+                    yield base_words_np.ravel().copy(), current_batch_count, np.array(base_hashes, dtype=np.uint32)
                     
                     base_words_np.fill(0)
                     base_hashes = []
                     current_batch_count = 0
-        
+            
         if current_batch_count > 0:
             # Yield the final, potentially partial, batch
             words_to_yield = base_words_np[:current_batch_count * max_len].ravel().copy()
-            yield words_to_yield, current_batch_count, base_hashes
+            yield words_to_yield, current_batch_count, np.array(base_hashes, dtype=np.uint32)
 
 
-# --- MAIN RANKING FUNCTION ---
+# --- MAIN RANKING FUNCTION (Optimized and Fixed) ---
 
 def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
     
@@ -539,15 +561,14 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
         
         rule_size_in_int = 2 + MAX_RULE_ARGS 
 
-        # The error is fixed here: KERNEL_SOURCE is now a full string
         prg = cl.Program(context, KERNEL_SOURCE).build()
-        kernel = prg.bfs_kernel 
+        kernel_bfs = prg.bfs_kernel 
+        kernel_init = prg.hash_map_init_kernel 
         print(f"✅ OpenCL initialized on device: {device.name.strip()}")
     except Exception as e:
         print(f"❌ OpenCL initialization or kernel compilation error: {e}")
         try:
              print("\nBuild Log:")
-             # Provide build log to the user in case of compilation failure
              print(prg.get_build_info(device, cl.program_build_info.LOG))
         except NameError:
              pass
@@ -558,7 +579,7 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
     total_words = get_word_count(wordlist_path)
     total_rules = len(rules_list)
 
-    # 3. Hash Map Initialization (Still in VRAM)
+    # 3. Hash Map Initialization (Host size for context, filled on GPU)
     global_hash_map_np = np.zeros(GLOBAL_HASH_MAP_WORDS, dtype=np.uint32)
     print(f"📝 Global Hash Map initialized: {GLOBAL_HASH_MAP_BYTES / (1024*1024):.2f} MB allocated.")
     
@@ -569,14 +590,18 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
     base_words_size = WORDS_PER_GPU_BATCH * MAX_WORD_LEN * np.uint8().itemsize
     base_words_in_g = cl.Buffer(context, mf.READ_ONLY, base_words_size)
     
-    # B) Rule Input Buffer (Filled once per rule batch)
+    # B) Base Hash Input Buffer (New buffer to transfer hashes to the GPU for map init)
+    base_hashes_size = WORDS_PER_GPU_BATCH * np.uint32().itemsize
+    base_hashes_g = cl.Buffer(context, mf.READ_ONLY, base_hashes_size)
+
+    # C) Rule Input Buffer (Filled once per rule batch)
     rules_np_batch = np.zeros(MAX_RULES_IN_BATCH * rule_size_in_int, dtype=np.uint32) 
     rules_in_g = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rules_np_batch)
     
-    # C) Hash Map (Transferred to VRAM once)
-    global_hash_map_g = cl.Buffer(context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=global_hash_map_np)
+    # D) Hash Map (Read/Write on GPU, cleared/set on GPU)
+    global_hash_map_g = cl.Buffer(context, mf.READ_WRITE, global_hash_map_np.nbytes)
     
-    # D) Rule Counter (Used in the GPU kernel)
+    # E) Rule Counter (Used in the GPU kernel)
     rule_uniqueness_counts_np = np.zeros(MAX_RULES_IN_BATCH, dtype=np.uint32)
     rule_uniqueness_counts_g = cl.Buffer(context, mf.READ_WRITE, rule_uniqueness_counts_np.nbytes)
     
@@ -593,16 +618,26 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
     word_batch_pbar = tqdm(total=total_words, desc="Processing wordlist from disk", unit=" word")
 
     # A. Iterate over word batches read from disk
-    for base_words_np_batch, num_words_batch, base_hashes in word_iterator:
+    for base_words_np_batch, num_words_batch, base_hashes_np_batch in word_iterator:
         
-        # 6a. Initialize Hash Map for current word batch
-        for h in base_hashes:
-            map_index = (h >> 5) & GLOBAL_HASH_MAP_MASK
-            bit_index = h & 31
-            global_hash_map_np[map_index] |= (1 << bit_index)
+        # 6a. Initialize Hash Map with current word batch (ON GPU)
         
-        # Transfer the updated hash map to the GPU VRAM
-        cl.enqueue_copy(queue, global_hash_map_g, global_hash_map_np).wait()
+        # --- GPU OPERATION 1: Clear Hash Map ---
+        cl.enqueue_fill_buffer(queue, global_hash_map_g, np.uint32(0), 0, global_hash_map_np.nbytes).wait()
+        
+        # --- GPU OPERATION 2: Populate Hash Map with Base Hashes ---
+        # 1. Transfer base hashes to the GPU
+        cl.enqueue_copy(queue, base_hashes_g, base_hashes_np_batch).wait()
+        
+        # 2. Define sizes and Launch kernel to set bits in the hash map
+        global_size_init = (int(math.ceil(num_words_batch / LOCAL_WORK_SIZE)) * LOCAL_WORK_SIZE,)
+        local_size_init = (LOCAL_WORK_SIZE,) # <-- FIX: Definition added here
+        
+        event_init = kernel_init(queue, global_size_init, local_size_init, 
+                                 global_hash_map_g,
+                                 base_hashes_g,
+                                 np.uint32(num_words_batch),
+                                 np.uint32(GLOBAL_HASH_MAP_MASK))
         
         # Update the GPU buffer with the current batch of words
         cl.enqueue_copy(queue, base_words_in_g, base_words_np_batch).wait()
@@ -627,23 +662,24 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
             cl.enqueue_copy(queue, rules_in_g, rules_np_batch).wait() 
             cl.enqueue_copy(queue, rule_uniqueness_counts_g, rule_uniqueness_counts_np).wait() 
 
-            # B2. Launch Kernel 
+            # B2. Launch Kernel (Wait for hash map init to complete) 
             desired_global_size = num_words_batch * current_batch_size
             global_size_actual = (int(math.ceil(desired_global_size / LOCAL_WORK_SIZE)) * LOCAL_WORK_SIZE,)
             local_size_actual = (LOCAL_WORK_SIZE,)
             
-            event = kernel(queue, global_size_actual, local_size_actual, 
-                           base_words_in_g,
-                           rules_in_g,
-                           rule_uniqueness_counts_g, 
-                           global_hash_map_g,      
-                           np.uint32(num_words_batch),
-                           np.uint32(current_batch_size),
-                           np.uint32(MAX_WORD_LEN),
-                           np.uint32(MAX_OUTPUT_LEN))
+            event_bfs = kernel_bfs(queue, global_size_actual, local_size_actual, 
+                                 base_words_in_g,
+                                 rules_in_g,
+                                 rule_uniqueness_counts_g, 
+                                 global_hash_map_g,         
+                                 np.uint32(num_words_batch),
+                                 np.uint32(current_batch_size),
+                                 np.uint32(MAX_WORD_LEN),
+                                 np.uint32(MAX_OUTPUT_LEN),
+                                 wait_for=[event_init]) # Ensure init is done before read
 
             # B3. Fetch results and update scores for this word batch
-            cl.enqueue_copy(queue, rule_uniqueness_counts_np, rule_uniqueness_counts_g, wait_for=[event]).wait()
+            cl.enqueue_copy(queue, rule_uniqueness_counts_np, rule_uniqueness_counts_g, wait_for=[event_bfs]).wait()
             
             current_word_batch_scores[rule_batch_idx_start:rule_batch_idx_end] = rule_uniqueness_counts_np[:current_batch_size]
 
@@ -655,18 +691,18 @@ def rank_rules_uniqueness(wordlist_path, rules_path, output_path):
 
         words_processed_total += num_words_batch
         word_batch_pbar.update(num_words_batch)
-        word_batch_pbar.set_postfix_str(f"New Hashes: +{newly_added_words_batch_total:,}")
+        word_batch_pbar.set_postfix_str(f"Successful Transformations: +{newly_added_words_batch_total:,}")
         
     word_batch_pbar.close()
 
-    # 7. Save Results (Only rules with score > 0)
+    # 7. Save Results (Only rules with score > 0, sorted by score)
     save_ranked_rules(rules_list, output_path)
 
 
 # --- Script Execution ---
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="A tool for ranking Hashcat rules based on transformation uniqueness, utilizing OpenCL."
+        description="A tool for ranking Hashcat rules based on transformation success against the base wordlist, utilizing OpenCL."
     )
     parser.add_argument(
         '-w', '--wordlist', 
