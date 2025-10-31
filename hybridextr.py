@@ -140,6 +140,14 @@ def main():
         action='store_true',
         help="Activate extraction of full-password masks (e.g., ?u?l?l?d?s)."
     )
+    
+    # Option to choose either edge, full, or both
+    parser.add_argument(
+        '--masks',
+        choices=['edge', 'full', 'both'],
+        default='both',
+        help="Choose which type of mask to extract: 'edge', 'full', or 'both'. Default is 'both'."
+    )
 
     args = parser.parse_args()
     
@@ -147,14 +155,14 @@ def main():
     max_mask_length = args.max_length
     min_mask_length = args.min_length
     extract_full = args.extract_full
+    mask_type = args.masks
     
     # --- Main Logic ---
     
     base_name = os.path.basename(input_path)
     
     # Adjust output name based on extraction mode
-    mode = "full_and_edge" if extract_full else "edge_only"
-    output_path = f"{mode}_from_{base_name}_min{min_mask_length}_max{max_mask_length}.hcmask" 
+    output_path = f"{mask_type}_masks_from_{base_name}_min{min_mask_length}_max{max_mask_length}.hcmask" 
         
     try:
         lines = read_file_safe(input_path)
@@ -164,8 +172,7 @@ def main():
         
     all_masks = []
     
-    mode_info = "full and edge" if extract_full else "edge"
-    print(f"Analyzing {len(lines)} lines to extract {mode_info} patterns (min {min_mask_length}, max {max_mask_length} for edges)...") 
+    print(f"Analyzing {len(lines)} lines to extract {mask_type} masks (min {min_mask_length}, max {max_mask_length} for edges)...") 
         
     for line in lines:
         line = line.strip()
@@ -178,21 +185,20 @@ def main():
         if len(password) < 5:
             continue
             
-        # 1. Edge Mask Extraction
-        edge_masks = extract_edge_masks(password, max_mask_length)
+        # 1. Edge Mask Extraction (if enabled)
+        if mask_type in ['edge', 'both']:
+            edge_masks = extract_edge_masks(password, max_mask_length)
+            # Apply minimum length filter
+            filtered_edge_masks = [mask for mask in edge_masks if len(mask) // 2 >= min_mask_length]
+            all_masks.extend(filtered_edge_masks)
         
-        # Apply minimum length filter
-        filtered_edge_masks = [mask for mask in edge_masks if len(mask) // 2 >= min_mask_length]
-        all_masks.extend(filtered_edge_masks)
-        
-        # 2. Full Mask Extraction (If enabled)
-        if extract_full:
+        # 2. Full Mask Extraction (if enabled)
+        if (mask_type == 'full' or mask_type == 'both') and extract_full:
             full_mask = extract_full_mask(password)
             if full_mask:
                 # Full masks are not length-limited, but must be unique
                 if full_mask not in all_masks:
                     all_masks.append(full_mask)
-
             
     # Counting and sorting masks
     counts = Counter(all_masks)
