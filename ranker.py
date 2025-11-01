@@ -27,7 +27,7 @@ MAX_RULES_IN_BATCH = 128
 LOCAL_WORK_SIZE = 256
 
 # BATCH SIZE FOR WORDS: Increased for 8GB VRAM stability and efficiency
-WORDS_PER_GPU_BATCH = 600000
+WORDS_PER_GPU_BATCH = 50000
 
 # Global Uniqueness Map Parameters (Targeting ~4.2 GB VRAM for 8GB cards)
 # 35 bits -> ~4.2 GB VRAM usage (High accuracy)
