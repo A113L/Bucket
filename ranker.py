@@ -574,7 +574,7 @@ def save_ranking_data(ranking_list, output_path):
 def load_and_save_optimized_rules(csv_path, output_path, top_k=500):
     """
     Loads ranking data from a CSV, re-sorts by Combined_Score, and saves the 
-    Top K rules to a new rule file.
+    Top K rules to a new rule file. Pre-pends the identity rule ':'.
     """
     if not csv_path:
         print("\nOptimization skipped: Ranking CSV path is missing.")
@@ -610,9 +610,18 @@ def load_and_save_optimized_rules(csv_path, output_path, top_k=500):
     # Save to File
     try:
         with open(output_path, 'w', newline='\n', encoding='utf-8') as f:
+            # 1. Write the mandatory identity rule
+            f.write(":\n")
+            
+            # 2. Write the top-ranked rules
             for rule in final_optimized_list:
-                f.write(f"{rule['Rule_Data']}\n")
-        print(f"✅ Top {len(final_optimized_list)} optimized rules saved successfully to {output_path}.")
+                # Ensure we don't duplicate the identity rule if it somehow scored high
+                if rule['Rule_Data'] != ':':
+                    f.write(f"{rule['Rule_Data']}\n")
+                    
+        # Calculate the final count of rules saved (including the prepended ':')
+        final_count = len([rule for rule in final_optimized_list if rule['Rule_Data'] != ':']) + 1
+        print(f"✅ Top {final_count} optimized rules (including the prepended ':' rule) saved successfully to {output_path}.")
     except Exception as e:
         print(f"❌ Error while saving optimized rules to file: {e}")
 
