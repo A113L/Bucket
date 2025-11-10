@@ -14,6 +14,18 @@ unsigned int rule_len(__global const unsigned char* rule_ptr, unsigned int max_r
     return max_rule_len;
 }
 
+// Helper function to check if character is a vowel
+bool is_vowel(unsigned char c) {
+    return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' || 
+            c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U');
+}
+
+// Helper function to check if character is a consonant
+bool is_consonant(unsigned char c) {
+    return ((c >= 'a' && c <= 'z' && !is_vowel(c)) || 
+            (c >= 'A' && c <= 'Z' && !is_vowel(c)));
+}
+
 __kernel void bfs_kernel(
     __global const unsigned char* base_words_in,
     __global const unsigned short* rules_in,
@@ -54,8 +66,8 @@ __kernel void bfs_kernel(
         result_ptr[i] = 0;
     }
 
-    // --- Unify rule ID blocks (Substituted from Python) ---
-    unsigned int start_id_simple = 0; // Placeholder - update with actual values
+    // --- Unify rule ID blocks ---
+    unsigned int start_id_simple = 0;
     unsigned int end_id_simple = start_id_simple + 10; // l, u, c, C, t, r, k, :, d, f
     unsigned int start_id_TD = end_id_simple;
     unsigned int end_id_TD = start_id_TD + 2; // T, D
@@ -64,38 +76,453 @@ __kernel void bfs_kernel(
     unsigned int start_id_A = end_id_s;
     unsigned int end_id_A = start_id_A + 3; // ^, $, @
     
-    // --- NEW rule ID ranges ---
     unsigned int start_id_groupB = end_id_A;
     unsigned int end_id_groupB = start_id_groupB + 13; // p, {, }, [, ], x, O, i, o, ', z, Z, q
     
     unsigned int start_id_new = end_id_groupB;
     unsigned int end_id_new = start_id_new + 13; // K, *NM, LN, RN, +N, -N, .N, ,N, yN, YN, E, eX, 3NX
     
-    // --- Kernel Logic (Rule Transformation) ---
+    // --- COMPREHENSIVE VOWEL RULES IMPLEMENTATION ---
+    unsigned int start_id_vowel = end_id_new;
+    unsigned int end_id_vowel = start_id_vowel + 70; // Extended range for all vowel variations
     
-    if (rule_id >= start_id_simple && rule_id < end_id_simple) {
-        // ... existing simple rules implementation ...
-        // (Keep your existing implementation for l, u, c, C, t, r, k, :, d, f)
-    }
-    else if (rule_id >= start_id_TD && rule_id < end_id_TD) {
-        // ... existing T/D rules implementation ...
-    }
-    else if (rule_id >= start_id_s && rule_id < end_id_s) {
-        // ... existing s rules implementation ...
-    }
-    else if (rule_id >= start_id_A && rule_id < end_id_A) {
-        // ... existing Group A rules implementation ...
-    }
-    else if (rule_id >= start_id_groupB && rule_id < end_id_groupB) {
-        // ... existing Group B rules implementation ...
-    }
-    // --- START NEW RULES IMPLEMENTATION ---
-    else if (rule_id >= start_id_new && rule_id < end_id_new) {
+    if (rule_id >= start_id_vowel && rule_id < end_id_vowel) {
+        unsigned char cmd = rule_ptr[0]; // Should be 'v'
+        unsigned int vowel_index = rule_id - start_id_vowel;
         
-        // Default to copying the word for modification
-        for(unsigned int i = 0; i < word_len; i++) result_ptr[i] = current_word_ptr[i];
+        // Define vowel sequences and special characters
+        unsigned char vowels_lower[] = {'a', 'e', 'i', 'o', 'u'};
+        unsigned char vowels_upper[] = {'A', 'E', 'I', 'O', 'U'};
+        unsigned char vowels_all[] = {'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'};
+        unsigned char special_chars[] = {'_', '.', ',', ':', ';', '-', '=', '+', '*', '/', '\\', 
+                                        '|', '!', '@', '#', '$', '%', '^', '&', '(', ')', 
+                                        '[', ']', '{', '}', '<', '>', '?', '~', '`', '"', '\''};
+        
+        unsigned char insert_char = 0;
+        bool use_sequence = false;
+        unsigned int sequence_index = 0;
+        
+        // Determine which character/sequence to insert based on the rule index
+        if (vowel_index < 10) {
+            // v0-v9: insert specific vowel from vowels_all
+            insert_char = vowels_all[vowel_index % 10];
+        } 
+        else if (vowel_index < 36) {
+            // vA-vZ: insert vowels in sequence (A=10, B=11, etc.)
+            unsigned int seq_index = vowel_index - 10;
+            insert_char = vowels_lower[seq_index % 5];
+        }
+        else if (vowel_index < 67) {
+            // Special characters range (v_ to v~)
+            unsigned int special_index = vowel_index - 36;
+            if (special_index < 32) {
+                insert_char = special_chars[special_index];
+            } else {
+                insert_char = '_'; // fallback
+            }
+        }
+        else {
+            // Advanced vowel sequences (v@a, v@A, etc.)
+            use_sequence = true;
+            sequence_index = vowel_index - 67;
+        }
+        
+        // Count consonants in the word
+        unsigned int consonant_count = 0;
+        for (unsigned int i = 0; i < word_len; i++) {
+            if (is_consonant(current_word_ptr[i])) {
+                consonant_count++;
+            }
+        }
+        
+        if (consonant_count > 0) {
+            // Calculate maximum possible output length
+            unsigned int max_possible_len = word_len + consonant_count;
+            
+            if (max_possible_len < max_output_len_padded) {
+                unsigned int out_idx = 0;
+                unsigned int consonant_counter = 0;
+                
+                if (!use_sequence) {
+                    // Single character insertion
+                    for (unsigned int i = 0; i < word_len; i++) {
+                        unsigned char c = current_word_ptr[i];
+                        
+                        // Copy current character
+                        result_ptr[out_idx++] = c;
+                        
+                        // Insert character after consonants
+                        if (is_consonant(c)) {
+                            result_ptr[out_idx++] = insert_char;
+                        }
+                    }
+                } else {
+                    // Advanced sequence insertion
+                    for (unsigned int i = 0; i < word_len; i++) {
+                        unsigned char c = current_word_ptr[i];
+                        
+                        // Copy current character
+                        result_ptr[out_idx++] = c;
+                        
+                        // Insert sequence character after consonants
+                        if (is_consonant(c)) {
+                            // Determine which character to insert based on sequence type
+                            switch (sequence_index) {
+                                case 0: // v@a - alternating lowercase vowels
+                                    result_ptr[out_idx++] = vowels_lower[consonant_counter % 5];
+                                    break;
+                                case 1: // v@A - alternating uppercase vowels  
+                                    result_ptr[out_idx++] = vowels_upper[consonant_counter % 5];
+                                    break;
+                                case 2: // v@. - alternating special characters
+                                    result_ptr[out_idx++] = special_chars[consonant_counter % 10];
+                                    break;
+                                default: // fallback to underscore
+                                    result_ptr[out_idx++] = '_';
+                                    break;
+                            }
+                            consonant_counter++;
+                        }
+                    }
+                }
+                
+                out_len = out_idx;
+                changed_flag = true;
+            }
+        }
+    }
+    // --- SIMPLE RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_simple && rule_id < end_id_simple) {
+        unsigned char cmd = rule_ptr[0];
+        
+        // Copy the word first
+        for(unsigned int i = 0; i < word_len; i++) {
+            result_ptr[i] = current_word_ptr[i];
+        }
         out_len = word_len;
-
+        
+        if (cmd == 'l') { // Lowercase all
+            for(unsigned int i = 0; i < word_len; i++) {
+                unsigned char c = result_ptr[i];
+                if (c >= 'A' && c <= 'Z') {
+                    result_ptr[i] = c + 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 'u') { // Uppercase all
+            for(unsigned int i = 0; i < word_len; i++) {
+                unsigned char c = result_ptr[i];
+                if (c >= 'a' && c <= 'z') {
+                    result_ptr[i] = c - 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 'c') { // Capitalize first letter
+            if (word_len > 0) {
+                unsigned char c = result_ptr[0];
+                if (c >= 'a' && c <= 'z') {
+                    result_ptr[0] = c - 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 'C') { // Lowercase first letter
+            if (word_len > 0) {
+                unsigned char c = result_ptr[0];
+                if (c >= 'A' && c <= 'Z') {
+                    result_ptr[0] = c + 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 't') { // Toggle case
+            for(unsigned int i = 0; i < word_len; i++) {
+                unsigned char c = result_ptr[i];
+                if (c >= 'a' && c <= 'z') {
+                    result_ptr[i] = c - 32;
+                    changed_flag = true;
+                } else if (c >= 'A' && c <= 'Z') {
+                    result_ptr[i] = c + 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 'r') { // Reverse
+            for(unsigned int i = 0; i < word_len; i++) {
+                result_ptr[i] = current_word_ptr[word_len - 1 - i];
+            }
+            changed_flag = true;
+        }
+        else if (cmd == 'k') { // Duplicate
+            if (word_len * 2 <= max_output_len_padded) {
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[word_len + i] = current_word_ptr[i];
+                }
+                out_len = word_len * 2;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == ':') { // Duplicate and reverse
+            if (word_len * 2 <= max_output_len_padded) {
+                // Duplicate
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[word_len + i] = current_word_ptr[i];
+                }
+                // Reverse the duplicate
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[word_len + i] = current_word_ptr[word_len - 1 - i];
+                }
+                out_len = word_len * 2;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'd') { // Duplicate with space
+            if (word_len * 2 + 1 <= max_output_len_padded) {
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[i] = current_word_ptr[i];
+                    result_ptr[word_len + 1 + i] = current_word_ptr[i];
+                }
+                result_ptr[word_len] = ' ';
+                out_len = word_len * 2 + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'f') { // Duplicate and reverse with space
+            if (word_len * 2 + 1 <= max_output_len_padded) {
+                // Copy original
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[i] = current_word_ptr[i];
+                }
+                // Add space
+                result_ptr[word_len] = ' ';
+                // Add reversed
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[word_len + 1 + i] = current_word_ptr[word_len - 1 - i];
+                }
+                out_len = word_len * 2 + 1;
+                changed_flag = true;
+            }
+        }
+    }
+    // --- T/D RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_TD && rule_id < end_id_TD) {
+        unsigned char cmd = rule_ptr[0];
+        
+        // Copy the word first
+        for(unsigned int i = 0; i < word_len; i++) {
+            result_ptr[i] = current_word_ptr[i];
+        }
+        out_len = word_len;
+        
+        if (cmd == 'T') { // Toggle at position N
+            unsigned int N = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? char_to_pos(rule_ptr[1]) : 0xFFFFFFFF;
+            if (N != 0xFFFFFFFF && N < word_len) {
+                unsigned char c = result_ptr[N];
+                if (c >= 'a' && c <= 'z') {
+                    result_ptr[N] = c - 32;
+                    changed_flag = true;
+                } else if (c >= 'A' && c <= 'Z') {
+                    result_ptr[N] = c + 32;
+                    changed_flag = true;
+                }
+            }
+        }
+        else if (cmd == 'D') { // Delete at position N
+            unsigned int N = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? char_to_pos(rule_ptr[1]) : 0xFFFFFFFF;
+            if (N != 0xFFFFFFFF && N < word_len) {
+                for(unsigned int i = N; i < word_len - 1; i++) {
+                    result_ptr[i] = result_ptr[i + 1];
+                }
+                out_len = word_len - 1;
+                changed_flag = true;
+            }
+        }
+    }
+    // --- S RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_s && rule_id < end_id_s) {
+        unsigned char cmd = rule_ptr[0];
+        unsigned int rule_length = rule_len(rule_ptr, max_rule_len_padded);
+        
+        if (rule_length >= 3) { // Need at least sXY
+            unsigned char find_char = rule_ptr[1];
+            unsigned char replace_char = rule_ptr[2];
+            
+            // Copy the word first
+            for(unsigned int i = 0; i < word_len; i++) {
+                result_ptr[i] = current_word_ptr[i];
+                if (current_word_ptr[i] == find_char) {
+                    result_ptr[i] = replace_char;
+                    changed_flag = true;
+                }
+            }
+            out_len = word_len;
+        }
+    }
+    // --- GROUP A RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_A && rule_id < end_id_A) {
+        unsigned char cmd = rule_ptr[0];
+        
+        if (cmd == '^') { // Prepend
+            unsigned char prepend_char = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? rule_ptr[1] : 0;
+            if (prepend_char != 0 && word_len + 1 < max_output_len_padded) {
+                result_ptr[0] = prepend_char;
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[i + 1] = current_word_ptr[i];
+                }
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '$') { // Append
+            unsigned char append_char = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? rule_ptr[1] : 0;
+            if (append_char != 0 && word_len + 1 < max_output_len_padded) {
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[i] = current_word_ptr[i];
+                }
+                result_ptr[word_len] = append_char;
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '@') { // Delete all instances of X
+            unsigned char delete_char = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? rule_ptr[1] : 0;
+            if (delete_char != 0) {
+                unsigned int out_idx = 0;
+                for(unsigned int i = 0; i < word_len; i++) {
+                    if (current_word_ptr[i] != delete_char) {
+                        result_ptr[out_idx++] = current_word_ptr[i];
+                    } else {
+                        changed_flag = true;
+                    }
+                }
+                out_len = out_idx;
+            }
+        }
+    }
+    // --- GROUP B RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_groupB && rule_id < end_id_groupB) {
+        unsigned char cmd = rule_ptr[0];
+        unsigned int N = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? char_to_pos(rule_ptr[1]) : 0xFFFFFFFF;
+        
+        // Copy the word first
+        for(unsigned int i = 0; i < word_len; i++) {
+            result_ptr[i] = current_word_ptr[i];
+        }
+        out_len = word_len;
+        
+        if (cmd == 'p') { // Pluralize
+            if (word_len + 1 < max_output_len_padded) {
+                result_ptr[word_len] = 's';
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '{') { // Rotate left
+            if (word_len > 1) {
+                unsigned char first_char = result_ptr[0];
+                for(unsigned int i = 0; i < word_len - 1; i++) {
+                    result_ptr[i] = result_ptr[i + 1];
+                }
+                result_ptr[word_len - 1] = first_char;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '}') { // Rotate right
+            if (word_len > 1) {
+                unsigned char last_char = result_ptr[word_len - 1];
+                for(int i = word_len - 1; i > 0; i--) {
+                    result_ptr[i] = result_ptr[i - 1];
+                }
+                result_ptr[0] = last_char;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '[') { // Delete first character
+            if (word_len > 1) {
+                for(unsigned int i = 0; i < word_len - 1; i++) {
+                    result_ptr[i] = current_word_ptr[i + 1];
+                }
+                out_len = word_len - 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == ']') { // Delete last character
+            if (word_len > 1) {
+                out_len = word_len - 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'x') { // Extract range N-M
+            // Implementation for xNM would go here
+        }
+        else if (cmd == 'O') { // Overstrike at position N
+            // Implementation for ONX would go here
+        }
+        else if (cmd == 'i') { // Insert at position N
+            unsigned char insert_char = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? rule_ptr[2] : 0;
+            if (N != 0xFFFFFFFF && insert_char != 0 && word_len + 1 < max_output_len_padded && N <= word_len) {
+                // Shift characters right
+                for(int i = word_len; i > N; i--) {
+                    result_ptr[i] = result_ptr[i - 1];
+                }
+                result_ptr[N] = insert_char;
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'o') { // Overwrite at position N
+            unsigned char overwrite_char = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? rule_ptr[2] : 0;
+            if (N != 0xFFFFFFFF && overwrite_char != 0 && N < word_len) {
+                result_ptr[N] = overwrite_char;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == '\'') { // Increment at position N
+            if (N != 0xFFFFFFFF && N < word_len) {
+                result_ptr[N] = current_word_ptr[N] + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'z') { // Duplicate first character
+            if (word_len + 1 < max_output_len_padded) {
+                // Shift right
+                for(int i = word_len; i > 0; i--) {
+                    result_ptr[i] = result_ptr[i - 1];
+                }
+                result_ptr[0] = current_word_ptr[0];
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'Z') { // Duplicate last character
+            if (word_len + 1 < max_output_len_padded) {
+                result_ptr[word_len] = current_word_ptr[word_len - 1];
+                out_len = word_len + 1;
+                changed_flag = true;
+            }
+        }
+        else if (cmd == 'q') { // Duplicate all characters
+            if (word_len * 2 < max_output_len_padded) {
+                unsigned int out_idx = 0;
+                for(unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[out_idx++] = current_word_ptr[i];
+                    result_ptr[out_idx++] = current_word_ptr[i];
+                }
+                out_len = word_len * 2;
+                changed_flag = true;
+            }
+        }
+    }
+    // --- NEW RULES IMPLEMENTATION ---
+    else if (rule_id >= start_id_new && rule_id < end_id_new) {
+        // Copy the word first
+        for(unsigned int i = 0; i < word_len; i++) {
+            result_ptr[i] = current_word_ptr[i];
+        }
+        out_len = word_len;
+        
         unsigned char cmd = rule_ptr[0];
         unsigned int N = (rule_len(rule_ptr, max_rule_len_padded) > 1) ? char_to_pos(rule_ptr[1]) : 0xFFFFFFFF;
         unsigned int M = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? char_to_pos(rule_ptr[2]) : 0xFFFFFFFF;
@@ -253,7 +680,6 @@ __kernel void bfs_kernel(
             }
         }
     }
-    // --- END NEW RULES IMPLEMENTATION ---
     
     // Final output processing
     if (changed_flag && out_len > 0) {
