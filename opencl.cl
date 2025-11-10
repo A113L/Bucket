@@ -82,24 +82,48 @@ __kernel void bfs_kernel(
     unsigned int start_id_new = end_id_groupB;
     unsigned int end_id_new = start_id_new + 13; // K, *NM, LN, RN, +N, -N, .N, ,N, yN, YN, E, eX, 3NX
     
-    // --- COMPREHENSIVE VOWEL RULES IMPLEMENTATION ---
+    // --- COMPREHENSIVE ALPHABET VOWEL RULES IMPLEMENTATION ---
     unsigned int start_id_vowel = end_id_new;
-    unsigned int end_id_vowel = start_id_vowel + 70; // Extended range for all vowel variations
+    unsigned int end_id_vowel = start_id_vowel + 100; // Extended range for all vowel variations
     
     if (rule_id >= start_id_vowel && rule_id < end_id_vowel) {
         unsigned char cmd = rule_ptr[0]; // Should be 'v'
         unsigned int vowel_index = rule_id - start_id_vowel;
         
-        // Define vowel sequences and special characters
+        // Define comprehensive vowel sequences and special characters
         unsigned char vowels_lower[] = {'a', 'e', 'i', 'o', 'u'};
         unsigned char vowels_upper[] = {'A', 'E', 'I', 'O', 'U'};
         unsigned char vowels_all[] = {'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'};
-        unsigned char special_chars[] = {'_', '.', ',', ':', ';', '-', '=', '+', '*', '/', '\\', 
-                                        '|', '!', '@', '#', '$', '%', '^', '&', '(', ')', 
-                                        '[', ']', '{', '}', '<', '>', '?', '~', '`', '"', '\''};
+        unsigned char vowels_extended[] = {'a', 'e', 'i', 'o', 'u', 'y', 'w', 'A', 'E', 'I', 'O', 'U', 'Y', 'W'};
+        
+        // Comprehensive special characters including all keyboard symbols
+        unsigned char special_chars[] = {
+            '_', '.', ',', ':', ';', '-', '=', '+', '*', '/', '\\', 
+            '|', '!', '@', '#', '$', '%', '^', '&', '(', ')', 
+            '[', ']', '{', '}', '<', '>', '?', '~', '`', '"', '\'',
+            ' ', '\t', '\n', '\r', '\v', '\f', // whitespace characters
+            '§', '©', '®', '™', '°', '·', '•', '¶', // extended symbols
+            '±', '¼', '½', '¾', '×', '÷', // mathematical symbols
+            '¡', '¿', '€', '£', '¥', '¢', '¤', '¦', // currency and punctuation
+            '¨', '´', '`', 'ˆ', '˜', '¯', '˘', '˙', '˚', '¸', '˝', '˛', 'ˇ' // diacritics
+        };
+        
+        // Alphabet sequences for advanced patterns
+        unsigned char alphabet_lower[] = {
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+        };
+        
+        unsigned char alphabet_upper[] = {
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+        };
+        
+        unsigned char numbers[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
         
         unsigned char insert_char = 0;
         bool use_sequence = false;
+        unsigned int sequence_type = 0;
         unsigned int sequence_index = 0;
         
         // Determine which character/sequence to insert based on the rule index
@@ -112,19 +136,37 @@ __kernel void bfs_kernel(
             unsigned int seq_index = vowel_index - 10;
             insert_char = vowels_lower[seq_index % 5];
         }
-        else if (vowel_index < 67) {
-            // Special characters range (v_ to v~)
+        else if (vowel_index < 68) {
+            // Special characters range (v_ to extended symbols)
             unsigned int special_index = vowel_index - 36;
-            if (special_index < 32) {
-                insert_char = special_chars[special_index];
+            if (special_index < 64) {
+                insert_char = special_chars[special_index % 64];
             } else {
                 insert_char = '_'; // fallback
             }
         }
+        else if (vowel_index < 94) {
+            // Alphabet sequences (va-vz)
+            unsigned int alpha_index = vowel_index - 68;
+            if (alpha_index < 26) {
+                insert_char = alphabet_lower[alpha_index];
+                use_sequence = true;
+                sequence_type = 1; // lowercase alphabet
+            }
+        }
+        else if (vowel_index < 100) {
+            // Number sequences (v0a-v9a)
+            unsigned int num_index = vowel_index - 94;
+            if (num_index < 10) {
+                insert_char = numbers[num_index];
+                use_sequence = true;
+                sequence_type = 2; // numbers
+            }
+        }
         else {
-            // Advanced vowel sequences (v@a, v@A, etc.)
+            // Advanced vowel sequences and patterns
             use_sequence = true;
-            sequence_index = vowel_index - 67;
+            sequence_type = vowel_index - 100;
         }
         
         // Count consonants in the word
@@ -167,18 +209,41 @@ __kernel void bfs_kernel(
                         // Insert sequence character after consonants
                         if (is_consonant(c)) {
                             // Determine which character to insert based on sequence type
-                            switch (sequence_index) {
-                                case 0: // v@a - alternating lowercase vowels
+                            switch (sequence_type) {
+                                case 0: // Default alternating vowels
                                     result_ptr[out_idx++] = vowels_lower[consonant_counter % 5];
                                     break;
-                                case 1: // v@A - alternating uppercase vowels  
+                                case 1: // Alphabet sequence (va-vz)
+                                    result_ptr[out_idx++] = alphabet_lower[consonant_counter % 26];
+                                    break;
+                                case 2: // Number sequence (v0a-v9a)
+                                    result_ptr[out_idx++] = numbers[consonant_counter % 10];
+                                    break;
+                                case 3: // Alternating uppercase vowels
                                     result_ptr[out_idx++] = vowels_upper[consonant_counter % 5];
                                     break;
-                                case 2: // v@. - alternating special characters
-                                    result_ptr[out_idx++] = special_chars[consonant_counter % 10];
+                                case 4: // Alternating uppercase alphabet
+                                    result_ptr[out_idx++] = alphabet_upper[consonant_counter % 26];
                                     break;
-                                default: // fallback to underscore
-                                    result_ptr[out_idx++] = '_';
+                                case 5: // Extended vowels (including y,w)
+                                    result_ptr[out_idx++] = vowels_extended[consonant_counter % 14];
+                                    break;
+                                case 6: // Reverse alphabet
+                                    result_ptr[out_idx++] = alphabet_lower[25 - (consonant_counter % 26)];
+                                    break;
+                                case 7: // Binary pattern 0101
+                                    result_ptr[out_idx++] = (consonant_counter % 2 == 0) ? '0' : '1';
+                                    break;
+                                case 8: // Vowel-consonant pattern
+                                    result_ptr[out_idx++] = (consonant_counter % 2 == 0) ? 
+                                                           vowels_lower[consonant_counter % 5] : 
+                                                           alphabet_lower[consonant_counter % 21];
+                                    break;
+                                case 9: // Special character sequence
+                                    result_ptr[out_idx++] = special_chars[consonant_counter % 32];
+                                    break;
+                                default: // fallback to alternating vowels
+                                    result_ptr[out_idx++] = vowels_lower[consonant_counter % 5];
                                     break;
                             }
                             consonant_counter++;
@@ -188,6 +253,36 @@ __kernel void bfs_kernel(
                 
                 out_len = out_idx;
                 changed_flag = true;
+            }
+        }
+        
+        // Special case: Empty word handling
+        if (word_len == 0) {
+            // For empty words, some rules might want to insert the character alone
+            if (max_output_len_padded >= 1) {
+                if (!use_sequence) {
+                    result_ptr[0] = insert_char;
+                    out_len = 1;
+                    changed_flag = true;
+                } else {
+                    // For sequences with empty words, insert first sequence character
+                    switch (sequence_type) {
+                        case 0:
+                            result_ptr[0] = vowels_lower[0];
+                            break;
+                        case 1:
+                            result_ptr[0] = alphabet_lower[0];
+                            break;
+                        case 2:
+                            result_ptr[0] = numbers[0];
+                            break;
+                        default:
+                            result_ptr[0] = vowels_lower[0];
+                            break;
+                    }
+                    out_len = 1;
+                    changed_flag = true;
+                }
             }
         }
     }
@@ -455,10 +550,22 @@ __kernel void bfs_kernel(
             }
         }
         else if (cmd == 'x') { // Extract range N-M
-            // Implementation for xNM would go here
+            unsigned int M = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? char_to_pos(rule_ptr[2]) : 0xFFFFFFFF;
+            if (N != 0xFFFFFFFF && M != 0xFFFFFFFF && N <= M && M < word_len) {
+                unsigned int out_idx = 0;
+                for(unsigned int i = N; i <= M; i++) {
+                    result_ptr[out_idx++] = current_word_ptr[i];
+                }
+                out_len = out_idx;
+                changed_flag = true;
+            }
         }
         else if (cmd == 'O') { // Overstrike at position N
-            // Implementation for ONX would go here
+            unsigned char overstrike_char = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? rule_ptr[2] : 0;
+            if (N != 0xFFFFFFFF && overstrike_char != 0 && N < word_len) {
+                result_ptr[N] = overstrike_char;
+                changed_flag = true;
+            }
         }
         else if (cmd == 'i') { // Insert at position N
             unsigned char insert_char = (rule_len(rule_ptr, max_rule_len_padded) > 2) ? rule_ptr[2] : 0;
