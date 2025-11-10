@@ -82,207 +82,77 @@ __kernel void bfs_kernel(
     unsigned int start_id_new = end_id_groupB;
     unsigned int end_id_new = start_id_new + 13; // K, *NM, LN, RN, +N, -N, .N, ,N, yN, YN, E, eX, 3NX
     
-    // --- COMPREHENSIVE ALPHABET VOWEL RULES IMPLEMENTATION ---
+    // --- CORRECT VOWEL RULES IMPLEMENTATION (vNX format) ---
     unsigned int start_id_vowel = end_id_new;
-    unsigned int end_id_vowel = start_id_vowel + 100; // Extended range for all vowel variations
+    unsigned int end_id_vowel = start_id_vowel + 50; // Reasonable range for vowel rules
     
     if (rule_id >= start_id_vowel && rule_id < end_id_vowel) {
         unsigned char cmd = rule_ptr[0]; // Should be 'v'
-        unsigned int vowel_index = rule_id - start_id_vowel;
+        unsigned int rule_length = rule_len(rule_ptr, max_rule_len_padded);
         
-        // Define comprehensive vowel sequences and special characters
-        unsigned char vowels_lower[] = {'a', 'e', 'i', 'o', 'u'};
-        unsigned char vowels_upper[] = {'A', 'E', 'I', 'O', 'U'};
-        unsigned char vowels_all[] = {'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'};
-        unsigned char vowels_extended[] = {'a', 'e', 'i', 'o', 'u', 'y', 'w', 'A', 'E', 'I', 'O', 'U', 'Y', 'W'};
-        
-        // Comprehensive special characters including all keyboard symbols
-        unsigned char special_chars[] = {
-            '_', '.', ',', ':', ';', '-', '=', '+', '*', '/', '\\', 
-            '|', '!', '@', '#', '$', '%', '^', '&', '(', ')', 
-            '[', ']', '{', '}', '<', '>', '?', '~', '`', '"', '\'',
-            ' ', '\t', '\n', '\r', '\v', '\f', // whitespace characters
-            '§', '©', '®', '™', '°', '·', '•', '¶', // extended symbols
-            '±', '¼', '½', '¾', '×', '÷', // mathematical symbols
-            '¡', '¿', '€', '£', '¥', '¢', '¤', '¦', // currency and punctuation
-            '¨', '´', '`', 'ˆ', '˜', '¯', '˘', '˙', '˚', '¸', '˝', '˛', 'ˇ' // diacritics
-        };
-        
-        // Alphabet sequences for advanced patterns
-        unsigned char alphabet_lower[] = {
-            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-        };
-        
-        unsigned char alphabet_upper[] = {
-            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-        };
-        
-        unsigned char numbers[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
-        
-        unsigned char insert_char = 0;
-        bool use_sequence = false;
-        unsigned int sequence_type = 0;
-        unsigned int sequence_index = 0;
-        
-        // Determine which character/sequence to insert based on the rule index
-        if (vowel_index < 10) {
-            // v0-v9: insert specific vowel from vowels_all
-            insert_char = vowels_all[vowel_index % 10];
-        } 
-        else if (vowel_index < 36) {
-            // vA-vZ: insert vowels in sequence (A=10, B=11, etc.)
-            unsigned int seq_index = vowel_index - 10;
-            insert_char = vowels_lower[seq_index % 5];
-        }
-        else if (vowel_index < 68) {
-            // Special characters range (v_ to extended symbols)
-            unsigned int special_index = vowel_index - 36;
-            if (special_index < 64) {
-                insert_char = special_chars[special_index % 64];
-            } else {
-                insert_char = '_'; // fallback
-            }
-        }
-        else if (vowel_index < 94) {
-            // Alphabet sequences (va-vz)
-            unsigned int alpha_index = vowel_index - 68;
-            if (alpha_index < 26) {
-                insert_char = alphabet_lower[alpha_index];
-                use_sequence = true;
-                sequence_type = 1; // lowercase alphabet
-            }
-        }
-        else if (vowel_index < 100) {
-            // Number sequences (v0a-v9a)
-            unsigned int num_index = vowel_index - 94;
-            if (num_index < 10) {
-                insert_char = numbers[num_index];
-                use_sequence = true;
-                sequence_type = 2; // numbers
-            }
-        }
-        else {
-            // Advanced vowel sequences and patterns
-            use_sequence = true;
-            sequence_type = vowel_index - 100;
-        }
-        
-        // Count consonants in the word
-        unsigned int consonant_count = 0;
-        for (unsigned int i = 0; i < word_len; i++) {
-            if (is_consonant(current_word_ptr[i])) {
-                consonant_count++;
-            }
-        }
-        
-        if (consonant_count > 0) {
-            // Calculate maximum possible output length
-            unsigned int max_possible_len = word_len + consonant_count;
+        if (rule_length >= 3) { // Need at least vNX
+            // Parse N (bytes between insertions) and X (byte to insert)
+            unsigned int N = char_to_pos(rule_ptr[1]); // Number of bytes between insertions
+            unsigned char X = rule_ptr[2]; // Character to insert
             
+            if (N != 0xFFFFFFFF) {
+                // Calculate maximum possible output length
+                unsigned int insert_count = 0;
+                
+                // Count how many insertions we'll make
+                if (N > 0) {
+                    insert_count = (word_len - 1) / N; // Insert every N characters
+                } else {
+                    // If N=0, insert after every character
+                    insert_count = word_len;
+                }
+                
+                unsigned int max_possible_len = word_len + insert_count;
+                
+                if (max_possible_len < max_output_len_padded) {
+                    unsigned int out_idx = 0;
+                    unsigned int char_counter = 0;
+                    
+                    if (N == 0) {
+                        // Special case: N=0 means insert after every character
+                        for (unsigned int i = 0; i < word_len; i++) {
+                            result_ptr[out_idx++] = current_word_ptr[i];
+                            result_ptr[out_idx++] = X;
+                        }
+                        out_len = out_idx;
+                        changed_flag = true;
+                    } else {
+                        // Normal case: insert every N characters
+                        for (unsigned int i = 0; i < word_len; i++) {
+                            result_ptr[out_idx++] = current_word_ptr[i];
+                            char_counter++;
+                            
+                            // Insert character after every N bytes
+                            if (char_counter >= N && i < word_len - 1) {
+                                result_ptr[out_idx++] = X;
+                                char_counter = 0; // Reset counter
+                            }
+                        }
+                        out_len = out_idx;
+                        changed_flag = true;
+                    }
+                }
+            }
+        } else if (rule_length == 2) {
+            // Handle vX format (assume N=1, insert after every character)
+            unsigned char X = rule_ptr[1]; // Character to insert
+            
+            unsigned int max_possible_len = word_len * 2;
             if (max_possible_len < max_output_len_padded) {
                 unsigned int out_idx = 0;
-                unsigned int consonant_counter = 0;
                 
-                if (!use_sequence) {
-                    // Single character insertion
-                    for (unsigned int i = 0; i < word_len; i++) {
-                        unsigned char c = current_word_ptr[i];
-                        
-                        // Copy current character
-                        result_ptr[out_idx++] = c;
-                        
-                        // Insert character after consonants
-                        if (is_consonant(c)) {
-                            result_ptr[out_idx++] = insert_char;
-                        }
-                    }
-                } else {
-                    // Advanced sequence insertion
-                    for (unsigned int i = 0; i < word_len; i++) {
-                        unsigned char c = current_word_ptr[i];
-                        
-                        // Copy current character
-                        result_ptr[out_idx++] = c;
-                        
-                        // Insert sequence character after consonants
-                        if (is_consonant(c)) {
-                            // Determine which character to insert based on sequence type
-                            switch (sequence_type) {
-                                case 0: // Default alternating vowels
-                                    result_ptr[out_idx++] = vowels_lower[consonant_counter % 5];
-                                    break;
-                                case 1: // Alphabet sequence (va-vz)
-                                    result_ptr[out_idx++] = alphabet_lower[consonant_counter % 26];
-                                    break;
-                                case 2: // Number sequence (v0a-v9a)
-                                    result_ptr[out_idx++] = numbers[consonant_counter % 10];
-                                    break;
-                                case 3: // Alternating uppercase vowels
-                                    result_ptr[out_idx++] = vowels_upper[consonant_counter % 5];
-                                    break;
-                                case 4: // Alternating uppercase alphabet
-                                    result_ptr[out_idx++] = alphabet_upper[consonant_counter % 26];
-                                    break;
-                                case 5: // Extended vowels (including y,w)
-                                    result_ptr[out_idx++] = vowels_extended[consonant_counter % 14];
-                                    break;
-                                case 6: // Reverse alphabet
-                                    result_ptr[out_idx++] = alphabet_lower[25 - (consonant_counter % 26)];
-                                    break;
-                                case 7: // Binary pattern 0101
-                                    result_ptr[out_idx++] = (consonant_counter % 2 == 0) ? '0' : '1';
-                                    break;
-                                case 8: // Vowel-consonant pattern
-                                    result_ptr[out_idx++] = (consonant_counter % 2 == 0) ? 
-                                                           vowels_lower[consonant_counter % 5] : 
-                                                           alphabet_lower[consonant_counter % 21];
-                                    break;
-                                case 9: // Special character sequence
-                                    result_ptr[out_idx++] = special_chars[consonant_counter % 32];
-                                    break;
-                                default: // fallback to alternating vowels
-                                    result_ptr[out_idx++] = vowels_lower[consonant_counter % 5];
-                                    break;
-                            }
-                            consonant_counter++;
-                        }
-                    }
+                for (unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[out_idx++] = current_word_ptr[i];
+                    result_ptr[out_idx++] = X;
                 }
                 
                 out_len = out_idx;
                 changed_flag = true;
-            }
-        }
-        
-        // Special case: Empty word handling
-        if (word_len == 0) {
-            // For empty words, some rules might want to insert the character alone
-            if (max_output_len_padded >= 1) {
-                if (!use_sequence) {
-                    result_ptr[0] = insert_char;
-                    out_len = 1;
-                    changed_flag = true;
-                } else {
-                    // For sequences with empty words, insert first sequence character
-                    switch (sequence_type) {
-                        case 0:
-                            result_ptr[0] = vowels_lower[0];
-                            break;
-                        case 1:
-                            result_ptr[0] = alphabet_lower[0];
-                            break;
-                        case 2:
-                            result_ptr[0] = numbers[0];
-                            break;
-                        default:
-                            result_ptr[0] = vowels_lower[0];
-                            break;
-                    }
-                    out_len = 1;
-                    changed_flag = true;
-                }
             }
         }
     }
