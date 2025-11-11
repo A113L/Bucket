@@ -1,3 +1,4 @@
+
 // Helper function to convert char digit/letter to int position
 unsigned int char_to_pos(unsigned char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -14,16 +15,16 @@ unsigned int rule_len(__global const unsigned char* rule_ptr, unsigned int max_r
     return max_rule_len;
 }
 
-// Helper function to check if character is a vowel
-bool is_vowel(unsigned char c) {
+// Helper function to check if character is a INSERT EVERY
+bool is_INSERT EVERY(unsigned char c) {
     return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' || 
             c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U');
 }
 
 // Helper function to check if character is a consonant
 bool is_consonant(unsigned char c) {
-    return ((c >= 'a' && c <= 'z' && !is_vowel(c)) || 
-            (c >= 'A' && c <= 'Z' && !is_vowel(c)));
+    return ((c >= 'a' && c <= 'z' && !is_INSERT EVERY(c)) || 
+            (c >= 'A' && c <= 'Z' && !is_INSERT EVERY(c)));
 }
 
 __kernel void bfs_kernel(
@@ -75,89 +76,15 @@ __kernel void bfs_kernel(
     unsigned int end_id_s = start_id_s + 1; // s
     unsigned int start_id_A = end_id_s;
     unsigned int end_id_A = start_id_A + 3; // ^, $, @
-    
     unsigned int start_id_groupB = end_id_A;
     unsigned int end_id_groupB = start_id_groupB + 13; // p, {, }, [, ], x, O, i, o, ', z, Z, q
-    
     unsigned int start_id_new = end_id_groupB;
     unsigned int end_id_new = start_id_new + 13; // K, *NM, LN, RN, +N, -N, .N, ,N, yN, YN, E, eX, 3NX
-    
-    // --- CORRECT VOWEL RULES IMPLEMENTATION (vNX format) ---
-    unsigned int start_id_vowel = end_id_new;
-    unsigned int end_id_vowel = start_id_vowel + 50; // Reasonable range for vowel rules
-    
-    if (rule_id >= start_id_vowel && rule_id < end_id_vowel) {
-        unsigned char cmd = rule_ptr[0]; // Should be 'v'
-        unsigned int rule_length = rule_len(rule_ptr, max_rule_len_padded);
-        
-        if (rule_length >= 3) { // Need at least vNX
-            // Parse N (bytes between insertions) and X (byte to insert)
-            unsigned int N = char_to_pos(rule_ptr[1]); // Number of bytes between insertions
-            unsigned char X = rule_ptr[2]; // Character to insert
-            
-            if (N != 0xFFFFFFFF) {
-                // Calculate maximum possible output length
-                unsigned int insert_count = 0;
-                
-                // Count how many insertions we'll make
-                if (N > 0) {
-                    insert_count = (word_len - 1) / N; // Insert every N characters
-                } else {
-                    // If N=0, insert after every character
-                    insert_count = word_len;
-                }
-                
-                unsigned int max_possible_len = word_len + insert_count;
-                
-                if (max_possible_len < max_output_len_padded) {
-                    unsigned int out_idx = 0;
-                    unsigned int char_counter = 0;
-                    
-                    if (N == 0) {
-                        // Special case: N=0 means insert after every character
-                        for (unsigned int i = 0; i < word_len; i++) {
-                            result_ptr[out_idx++] = current_word_ptr[i];
-                            result_ptr[out_idx++] = X;
-                        }
-                        out_len = out_idx;
-                        changed_flag = true;
-                    } else {
-                        // Normal case: insert every N characters
-                        for (unsigned int i = 0; i < word_len; i++) {
-                            result_ptr[out_idx++] = current_word_ptr[i];
-                            char_counter++;
-                            
-                            // Insert character after every N bytes
-                            if (char_counter >= N && i < word_len - 1) {
-                                result_ptr[out_idx++] = X;
-                                char_counter = 0; // Reset counter
-                            }
-                        }
-                        out_len = out_idx;
-                        changed_flag = true;
-                    }
-                }
-            }
-        } else if (rule_length == 2) {
-            // Handle vX format (assume N=1, insert after every character)
-            unsigned char X = rule_ptr[1]; // Character to insert
-            
-            unsigned int max_possible_len = word_len * 2;
-            if (max_possible_len < max_output_len_padded) {
-                unsigned int out_idx = 0;
-                
-                for (unsigned int i = 0; i < word_len; i++) {
-                    result_ptr[out_idx++] = current_word_ptr[i];
-                    result_ptr[out_idx++] = X;
-                }
-                
-                out_len = out_idx;
-                changed_flag = true;
-            }
-        }
-    }
+    unsigned int start_id_INSERT EVERY = end_id_new;
+    unsigned int end_id_INSERT EVERY = start_id_INSERT EVERY + 50; // vNX INSERT EVERY rules
+
     // --- SIMPLE RULES IMPLEMENTATION ---
-    else if (rule_id >= start_id_simple && rule_id < end_id_simple) {
+    if (rule_id >= start_id_simple && rule_id < end_id_simple) {
         unsigned char cmd = rule_ptr[0];
         
         // Copy the word first
@@ -657,6 +584,77 @@ __kernel void bfs_kernel(
             }
         }
     }
+    // --- INSERT EVERY RULES IMPLEMENTATION (vNX format) ---
+    else if (rule_id >= start_id_INSERT EVERY && rule_id < end_id_INSERT EVERY) {
+        unsigned char cmd = rule_ptr[0]; // Should be 'v'
+        unsigned int rule_length = rule_len(rule_ptr, max_rule_len_padded);
+        
+        if (rule_length >= 3) { // Need at least vNX
+            // Parse N (bytes between insertions) and X (byte to insert)
+            unsigned int N = char_to_pos(rule_ptr[1]); // Number of bytes between insertions
+            unsigned char X = rule_ptr[2]; // Character to insert
+            
+            if (N != 0xFFFFFFFF) {
+                // Calculate maximum possible output length
+                unsigned int insert_count = 0;
+                
+                // Count how many insertions we'll make
+                if (N > 0) {
+                    insert_count = (word_len - 1) / N; // Insert every N characters
+                } else {
+                    // If N=0, insert after every character
+                    insert_count = word_len;
+                }
+                
+                unsigned int max_possible_len = word_len + insert_count;
+                
+                if (max_possible_len < max_output_len_padded) {
+                    unsigned int out_idx = 0;
+                    unsigned int char_counter = 0;
+                    
+                    if (N == 0) {
+                        // Special case: N=0 means insert after every character
+                        for (unsigned int i = 0; i < word_len; i++) {
+                            result_ptr[out_idx++] = current_word_ptr[i];
+                            result_ptr[out_idx++] = X;
+                        }
+                        out_len = out_idx;
+                        changed_flag = true;
+                    } else {
+                        // Normal case: insert every N characters
+                        for (unsigned int i = 0; i < word_len; i++) {
+                            result_ptr[out_idx++] = current_word_ptr[i];
+                            char_counter++;
+                            
+                            // Insert character after every N bytes
+                            if (char_counter >= N && i < word_len - 1) {
+                                result_ptr[out_idx++] = X;
+                                char_counter = 0; // Reset counter
+                            }
+                        }
+                        out_len = out_idx;
+                        changed_flag = true;
+                    }
+                }
+            }
+        } else if (rule_length == 2) {
+            // Handle vX format (assume N=1, insert after every character)
+            unsigned char X = rule_ptr[1]; // Character to insert
+            
+            unsigned int max_possible_len = word_len * 2;
+            if (max_possible_len < max_output_len_padded) {
+                unsigned int out_idx = 0;
+                
+                for (unsigned int i = 0; i < word_len; i++) {
+                    result_ptr[out_idx++] = current_word_ptr[i];
+                    result_ptr[out_idx++] = X;
+                }
+                
+                out_len = out_idx;
+                changed_flag = true;
+            }
+        }
+    }
     
     // Final output processing
     if (changed_flag && out_len > 0) {
@@ -670,3 +668,4 @@ __kernel void bfs_kernel(
         }
     }
 }
+        
