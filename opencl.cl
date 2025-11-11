@@ -7,20 +7,6 @@ unsigned int char_to_pos(unsigned char c) {
     return 0xFFFFFFFF; 
 }
 
-// Helper function to get rule length
-unsigned int rule_len(__global const unsigned char* rule_ptr, unsigned int max_rule_len) {
-    for (unsigned int i = 0; i < max_rule_len; i++) {
-        if (rule_ptr[i] == 0) return i;
-    }
-    return max_rule_len;
-}
-
-// Helper function to check if character is a INSERT EVERY
-bool is_INSERT EVERY(unsigned char c) {
-    return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' || 
-            c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U');
-}
-
 // Helper function to check if character is a consonant
 bool is_consonant(unsigned char c) {
     return ((c >= 'a' && c <= 'z' && !is_INSERT EVERY(c)) || 
